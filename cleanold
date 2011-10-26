@@ -1,0 +1,185 @@
+#!/bin/bash
+#
+# 本脚本清理指定文件夹(不知定默认为/var/DIR/pacman/pkg)下过期的软件包，默认保留最新的两个版本.
+# Carbon Jiao   2009-09-06 
+# Archlive <http://archlive.google.com>
+#
+# 本脚本最开始算法来自于http://www.linuxsir.org/bbs/thread348435.html
+# 原作者  veryxp
+#
+# 2009-09-21 更新：执行前先等待5秒。。。
+
+APPNAME=$(basename "${0}")
+cmdline=$@
+
+KEEPN=2
+DIR=""
+
+# usage: usage <exitvalue>
+usage ()
+{
+   echo ""
+   echo " 用法: sudo sh ./${APPNAME} [选项] -r <预清理目录>"
+   echo "       如果将本脚本放在系统PATH指定的目录中，则:"
+   echo "       sudo ${APPNAME} [选项] -r <预清理目录>"
+   echo " 选项:"
+   echo "    -f               删除前无需确认;"
+   echo "    -a               没有安装的所有包也删除;"
+   echo "    -r <DIR>         DIR 为预清理的目录;"
+   echo "    -n <n>  	     n: 保留版本数默认为$KEEPN;"
+   echo "    -h               本帮助信息."
+   exit $1
+}
+COLORMSG=1
+plain() {
+	if [ $COLORMSG -eq 1 ]; then
+		echo -e "\033[1;2m    $@\033[1;0m"
+	else
+		echo -e "	$@"
+	fi
+}
+
+msg() {
+	if [ $COLORMSG -eq 1 ]; then
+		echo -e "\033[1;32m==>\033[1;0m\033[1;1m $@\033[1;0m"
+	else
+		echo -e "==> $@"
+	fi
+}
+msg2() {
+	if [ $COLORMSG -eq 1 ]; then
+		echo -e "\033[1;34m  ->\033[1;0m\033[1;1m $@\033[1;0m"
+	else
+		echo -e "  -> $@"
+	fi
+}
+warn() {
+	if [ $COLORMSG -eq 1 ]; then
+		echo -e "\033[1;33m==> $(gettext "WARN:")\033[1;0m\033[1;1m $@\033[1;0m"
+	else
+		echo -e "==> $(gettext "WARN:") $@"
+	fi
+}
+error() {
+	if [ $COLORMSG -eq 1 ]; then
+		echo -e "\033[1;31m==> $(gettext "ERROR:")\033[1;0m\033[1;1m $@\033[1;0m"
+	else
+		echo -e "==> $(gettext "ERROR:") $@"
+	fi
+}
+
+[ "$EUID" != "0" ] && error "错误: 必须以root用户运行本制作脚本." && usage 1
+
+# 检测、配置输入的命令
+while getopts ':fahn:r:' arg; do
+   case "${arg}" in
+	n) KEEPN="${OPTARG}";;
+	r) DIR="${OPTARG}";;
+	f) ;;
+	a) ;;
+        h) usage 0;;
+        ?) error "输入$@包含无效参数 "; usage 1;;
+   esac
+done
+
+if [ "x$DIR" = "x" ]; then
+	if [ ! -f /etc/pacman.conf ]; then error "没有指定预清理的目录，且操作系统不是Arch，为安全考虑，程序退出！" && usage 1; fi
+	DIR=$(grep CacheDir /etc/pacman.conf | awk '{print $3}')
+	if [ "x$DIR" = "x" ]; then error "没有指定预清理的目录，且pacman.conf无缓存相关设置!" && usage 1; fi
+fi
+
+msg "输入的参数:$cmdline"
+result="清理目录$DIR, 保留${KEEPN}个版本"
+case $cmdline in *a*) result="${result}, 删除系统没有安装的软件包"
+			if [ ! -f /etc/pacman.conf ]; then error "操作系统不是Arch, 出现问题后果自负！"; fi
+			;;
+		esac
+case $cmdline in *f*) result="${result}, 删除先无需确认";; esac
+
+msg ${result}
+
+shift `expr $OPTIND - 1`
+
+#if ! [ "x${@}" = "x" ]; then
+#	error "无法识别的参数或命令: $@"
+#	usage 1
+#fi
+
+msg "5秒后继续，Ctrl+C 可以结束本脚本的执行。"
+sleep 5
+
+action_clean ()
+{
+   for ((i=0; i<${#list[@]}; i++)); do
+	# 取得软件包名称
+	pkgname=${list[$i]% *}    
+
+	case $cmdline in *-a*)
+		# 如果系统里没有安装此包，将其删除
+		#if ! pacman -Qq $pkgname>/dev/null 2>&1; then  #不喜欢调用pacman的用如下语句 Carbonjiao注
+		if [ "x$(ls $(grep DBPath /etc/pacman.conf | awk '{print $3}')/local | grep "${list[$i]// /-}")" = "x" ]; then
+			plain "系统中没有安装$pkgname, 现在删除$DIR 下的软件包 ${list[$i]// /-}"
+			case $cmdline in *-f*) rm -rf ${list[$i]// /-};;
+				  *) rm -ri ${list[$i]// /-} ;; 
+			esac
+			continue
+		fi
+		;;
+	esac
+
+	# 如果出现重复的软件包名称，则更新重复计数器 dup
+	if [ "$pkgname" == "$prev" ]; then
+		let "dup++"
+	else 
+	# 如果计数器超过设置的 KEEPN，就开始清理
+		if [ ${dup:-0} -gt $KEEPN ]; then
+			msg "软件 $prev 有 $dup 个版本"
+			# 确定需要处理的数组上下标 ub 和 lb，用 let 赋值更会清晰一些
+			ub=$(($i-1)); lb=$(($i-$dup))  
+
+			# 用冒泡法将要处理的数组元素排序，版本旧的在前
+			# 如够偷懒可以不排序，按修改时间判断包的新旧，可能不准
+			for ((x=$lb; x<$ub; x++)); do
+				for ((y=$ub; y>$x; y--)); do
+					vercmp "${list[$y]// /-}" "${list[$(($y-1))]// /-}" > /dev/null
+					if [ $? -lt 0 ]; then
+						t="${list[$y]}"
+					   	list[$y]="${list[$(($y-1))]}"
+						list[$(($y-1))]="$t"
+					fi
+				done
+			done
+
+			# 排序好之后，清理掉多余的包
+			for ((z=0; z<$(($dup-$KEEPN)); z++)); do
+				plain "删除过期软件包${list[$(($lb+$z))]// /-}"
+				case $cmdline in *-f*) rm -rf "${list[$(($lb+$z))]// /-}" ;; 
+						 *) rm -ri "${list[$(($lb+$z))]// /-}" ;;
+				esac
+			done
+		fi
+		dup=1 # 重置计数器 dup
+	fi
+	prev="$pkgname" # 记录上一个包的名称
+   done
+}
+
+IFS=$'\n' 
+SED='s/\(.\{1,\}\)-\([0-9][a-z0-9\._]*-[0-9\.]\{1,\}\)/\1 \2/'
+# 用 sed 将缓存中的文件名分割成“软件包名称＋空格＋其它后缀的形式，并存入数组 list
+# 如 xsel-1.2.0-1.pkg.tar.gz 在数组中就是 "xsel -1.2.0-1.pkg.tar.gz"
+# 使用下面的 ls 命令请确保文件是按名称排序
+
+cd "$DIR"
+if [ "$(ls -1 *-i686.* | wc -l)" -gt 0 ]; then
+	list=(`ls -1 *-i686.* | sed -e "$SED"`)
+	action_clean
+fi
+if [ "$(ls -1 *-x86_64.* | wc -l)" -gt 0 ]; then
+	list=(`ls -1 *-x86_64.* | sed -e "$SED"`)
+	action_clean
+fi
+if [ "$(ls -1 *-any.* | wc -l)" -gt 0 ]; then
+	list=(`ls -1 *-any.* | sed -e "$SED"`)
+	action_clean
+fi

@@ -1,0 +1,16 @@
+常用的一些脚本收集
+
+256color2.pl,colortable16.sh,color,colortest 4个都是显示色彩的脚本
+分别是256色,16色,以及色彩图表
+
+cleanold,pacman-disowned是清理arch的pacman缓存的脚本
+
+multiboot.sh 使用grub2制作多启动U盘的脚本
+
+shoot 截图保存到~/pictures/shot/上传imgur的脚本(可以选择窗口或者区域)
+
+flashdisserver.sh 在gnome3中全屏看flash电影的时候暂停屏幕保护的脚本
+
+tplinkrestart 重启tplink路由器的脚本
+
+ssh4gfw.sh 自动登陆ssh4gfw代理的脚本

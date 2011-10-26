@@ -1,0 +1,75 @@
+#!/bin/bash
+
+###################
+# 截图上传imgur脚本
+# 用法 $ shoot
+# 
+####################
+#
+# 依赖 scrot curl zenity xclip
+#
+# #################
+#
+# ps:注册自己的key，在这个地方 http://api.imgur.com/ ，一般来说选择 Anonymous API ，打开 http://imgur.com/register/api_anon
+# 网站，填写相关信息后就会得到一串数字，替换掉上面的”key”=”5d317f0bee23b282473522e1aa68f621″ 中间的那一串数字即可。
+# 这个 api是一个小时内允许上传五十张图，至于其他的，有兴趣的可以自己看看
+#
+# 参考: http://www.leyle.com/archives/342001
+#       http://ubuntuforums.org/showthread.php?t=1604604
+#       http://www.webupd8.org/2010/01/scripts-to-take-screenshot-and-upload.html
+#       http://blog.felixc.at/2011/07/scrot-screenshot-script-auto-upload-to-imgur-and-copy-link/
+#####################
+
+screenshot='screenshot';
+name=`date '+%Y-%m-%d-%H-%M-%S'`;
+extension='.png';
+#file="$HOME/Desktop/$screenshot-$nano$extension";
+file="$HOME/Pictures/Shot/$screenshot-$name$extension";
+
+sleep 0.2;
+
+scrot -s -b $file;
+#scrot -s -b -q 0 $file;
+
+# curl使用proxy代理,比如我的ssh代理
+TEXT=$(curl --socks5-hostname 127.0.0.1:7070 -F "image"=@"$file" -F "key"="c61f8914057660b4ede49a9975b2e57c" http://imgur.com/api/upload.xml | grep -Eo '<[a-z_]+>http[^<]+'|sed 's/^<.\|_./\U&/g;s/_/ /;s/<\(.*\)>/\1:\ /');
+
+zenity --info --title="Imgur Upload" --text="$TEXT";
+
+exit 0
+
+# sleep 0.5;
+# notify-send "Imgur Uploader";
+#function uploadImage {
+#  curl -s -F "image=@$1" -F "key=486690f872c678126a2c09a9e196ce1b" http://imgur.com/api/upload.xml | grep -E -o "<original_image>(.)*</original_image>" | grep -E -o "http://i.imgur.com/[^<]*"
+#}
+#
+#scrot -s "shot.png" 
+#uploadImage "shot.png" | xclip -selection c
+#rm "shot.png"
+#notify-send "Done"
+#
+
+#name=`date '+%Y-%m-%d-%H-%M-%S'`;
+#
+#extension='.png';
+#
+#file="$HOME/Pictures/Shot/$name$extension";
+#
+#sleep 0.2;
+#
+#scrot -s -b $file ;
+#
+#UPLODAD=$(curl --socks5-hostname 127.0.0.1:7070 -F "image"=@"$file" -F "key"="c61f8914057660b4ede49a9975b2e57c" http://imgur.com/api/upload.xml | grep -Eo '<original_image>(.+?)</original_image>' | grep -Eo 'http://(.+?).png');
+#
+#echo $UPLOAD | xclip -selection clipboard;
+#
+#echo $UPLOAD | xclip;
+#
+#zenity --info --title="Imgur Upload" --text="$TEXT";
+##firefox $UPLOAD;
+#
+#echo "$name$extension $UPLOAD" >>  "$HOME/Pictures/Shot/.caphistory";
+#
+#notify-send -t 3000 "capture and update done"
+
