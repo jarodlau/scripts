@@ -14,3 +14,5 @@ flashdisserver.sh 在gnome3中全屏看flash电影的时候暂停屏幕保护的
 tplinkrestart 重启tplink路由器的脚本
 
 ssh4gfw.sh 自动登陆ssh4gfw代理的脚本
+
+autochmod.sh 自动修改自己家目录的权限,目录改为755,文件改为自己rw,别人只读 
